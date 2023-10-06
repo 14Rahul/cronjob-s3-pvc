@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: s3-cleanup-adhoc-dev-weekly-2
+  namespace: s3-cleanup
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          name: s3-cleanup-job
+          annotations:
+            "cluster-autoscaler.kubernetes.io/safe-to-evict": "false"
+        spec:
+          serviceAccountName: s3-cleanup
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: role
+                        operator: In
+                        values:
+                          - workers
+          containers:
+            - image: rahulgupta1234/cronjobs3:1
+              imagePullPolicy: Always
+              name: adhoc-dev-cleaner
+              args:
+              - /bin/bash
+              - -c
+              - python3 archivecronjob.py -t OLD demo ic prodigal gatestoneus 1016371 3141046 genesys investinet -d 60 -y 2023 -p siprec-capture
+              volumeMounts:
+                - name: cleanup-vol
+                  mountPath: /mnt/data
+          initContainers:
+            - name: change-ownership-container
+              image: busybox
+              command:
+                - /bin/chown
+                - -R
+                - 1000:1000
+                - /mnt/data
+              securityContext:
+                runAsUser: 0
+                privileged: true
+              volumeMounts:
+                - name: cleanup-vol
+                  mountPath: /mnt/data
+          volumes:
+            - name: cleanup-vol
+              persistentVolumeClaim:
+                claimName: s3-cleanup-claim-2
